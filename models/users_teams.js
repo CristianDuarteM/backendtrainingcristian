@@ -28,7 +28,6 @@ module.exports = (sequelize, DataTypes) => {
             allowNull: false,
             unique: 'UK01'
         },
-        team_id: DataTypes.INTEGER
     }, {
         underscored: true,
         underscoredAll: true

@@ -1,15 +1,17 @@
 'use strict'
 
 const User = require('../models').users
+const Institutions = require('../models').institutions
 const Submissions = require('../models').submissions
 const Syllabus = require('../models').syllabuses
 const Problems = require('../models').problems
 const authService = require('../services/authenticationService')
 const path = require('path')
 const _ = require('lodash');
+const {categories: Category, sequelize} = require("../models");
 
 /**
- * Users controller 
+ * Users controller
  */
 
 function removeAccounts(req, res) {
@@ -20,10 +22,10 @@ function removeAccounts(req, res) {
         return res.status(400).send({ error: 'Datos incompletos' })
 
     User.destroy({
-            where: {
-                id: req.body.users
-            }
-        })
+        where: {
+            id: req.body.users
+        }
+    })
         .then(function(deletedRecords) {
             return res.status(200).json(deletedRecords);
         })
@@ -53,12 +55,16 @@ function index(req, res) {
         condition.id = { $ne: null }
 
     User.findAndCountAll({
-        where: condition,
+        // where: condition,
         attributes: ['id', 'name', 'email', 'code', 'type', 'username'],
+        include: [
+            { model: Institutions , as:"institution",
+                required: false,
+            }
+        ],
         limit: limit,
         offset: offset
     }).then((response) => {
-        console.log(response)
         meta.totalPages = Math.ceil(response.count / limit)
         meta.totalItems = response.count
 
@@ -72,19 +78,19 @@ function index(req, res) {
 }
 
 /**
- * Registers an student user 
+ * Registers an student user
  * @param {any} req
  * @param {any} res
  */
 function register(req, res) {
     req.body.type = 0
-
     User.create(req.body)
         .then(user => {
             return res.sendStatus(201)
         })
         .catch(error => {
             error = _.omit(error, ['parent', 'original', 'sql'])
+            console.log(error)
             return res.status(400).send(error)
         })
 }
@@ -270,15 +276,15 @@ function getSubmissions(req, res) {
     }
 
     Submissions.findAndCountAll({
-            where: condition,
-            include: [
-                { model: Problems, attributes: ['title_en', 'id', 'title_es', 'level'] }
-            ],
-            attributes: ['id', 'language', 'file_name', 'execution_time', 'verdict', 'status', 'created_at'],
-            limit: limit,
-            order: order,
-            offset: offset,
-        })
+        where: condition,
+        include: [
+            { model: Problems, attributes: ['title_en', 'id', 'title_es', 'level'] }
+        ],
+        attributes: ['id', 'language', 'file_name', 'execution_time', 'verdict', 'status', 'created_at'],
+        limit: limit,
+        order: order,
+        offset: offset,
+    })
         .then((response) => {
             meta.totalPages = Math.ceil(response.count / limit)
             meta.totalItems = response.count
@@ -292,8 +298,69 @@ function getSubmissions(req, res) {
         })
 }
 
+function getSubmissionsbyContest(req, res) {
+
+    if(req.user.usertype === 0){
+        return res.status(401).send({ error: 'No se encuentra autorizado' });
+    }
+
+    sequelize.query(`SELECT s.id, s.language, s.file_name, s.execution_time, s.verdict, s.status, s.created_at, s.user_id,
+    p.id as pid, p.title_en, p.title_es, p.level,
+    cp.contest_id,
+    us.name, us.username
+    FROM submissions as s, contests_problems as cp, problems as p, users as us
+    WHERE s.contest_problem_id = cp.id
+    and p.id = s.problem_id
+    AND cp.contest_id =  ${req.query.cid}
+    and s.user_id = ${req.query.usrid}
+    and us.id = ${req.query.usrid}
+    ORDER BY s.created_at DESC`).then((response) => {
+        response.count;
+        return res.status(200).send({
+            cantidad: response[0].length,
+            datos: response[0],
+        });
+    })
+    .catch((err) => {
+        return res.status(500).send({ error: `${err}` })
+    });
+}
+
 function getSubmission(req, res) {
     return res.sendFile(path.join(path.dirname(__dirname), 'files', 'codes', req.params.submission))
+}
+
+function getUserByInstitution(req, res){
+    let limit = (req.query.limit) ? parseInt(req.query.limit) : 10
+    let offset = (req.query.page) ? limit * (parseInt(req.query.page) - 1) : 0
+    let idInstitution = req.params.idInstitution;
+
+    let condition = {}
+    let meta = {}
+
+    condition.institution_id = idInstitution
+
+    User.findAndCountAll({
+        attributes: ['id', 'name', 'email', 'code', 'type', 'username'],
+        include: [
+            { model: Institutions ,as:"institution",
+                required: false,
+            }
+        ],
+        where: condition,
+        limit: limit,
+        offset: offset
+    }).then((response) => {
+        meta.totalPages = Math.ceil(response.count / limit)
+        meta.totalItems = response.count
+
+        if (offset >= response.count) {
+            return res.status(200).send({ meta })
+        }
+        res.status(200).send({ meta: meta, data: response.rows })
+    }).catch((err) => {
+        return res.status(500).send({ error: `${err}` })
+    })
 }
 
 
@@ -306,7 +373,9 @@ module.exports = {
     update,
     getSyllabus,
     removeAccounts,
+    getSubmissionsbyContest,
     getSubmissions,
     getSubmission,
-    getUser
+    getUser,
+    getUserByInstitution
 }

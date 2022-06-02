@@ -253,7 +253,7 @@ function registerStudent(req, res) {
             contest.addUsers(req.user.sub).then((user) => {
                 return res.sendStatus(201)
             }).catch((err) => {
-                return res.sendStatus(500)
+                return res.sendStatus(500);
             })
         })
         .catch((err) => {
@@ -288,7 +288,7 @@ function removeStudent(req, res) {
 
 function list(req, res) {
     console.log(req.query)
-    let limit = (req.query.limit) ? parseInt(req.query.limit) : 10
+    let limit = (req.query.limit) ? parseInt(req.query.limit) : 10;
     let offset = (req.query.page) ? limit * (parseInt(req.query.page) - 1) : 0
 
     let condition = {}
